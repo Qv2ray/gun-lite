@@ -45,6 +45,23 @@ func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
 		dialFunc = func(network, addr string, cfg *tls.Config) (net.Conn, error) {
 			return net.Dial(network, addr)
 		}
+	} else {
+		dialFunc = func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+			pconn, err := net.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+
+			cn := tls.Client(pconn, cfg)
+			if err := cn.Handshake(); err != nil {
+				return nil, err
+			}
+			state := cn.ConnectionState()
+			if p := state.NegotiatedProtocol; p != http2.NextProtoTLS {
+				return nil, errors.New("http2: unexpected ALPN protocol " + p + "; want q" + http2.NextProtoTLS)
+			}
+			return cn, nil
+		}
 	}
 
 	var tlsClientConfig *tls.Config = nil
@@ -157,14 +174,22 @@ func (g *GunConn) isClosed() bool {
 }
 
 func (g GunConn) Read(b []byte) (n int, err error) {
-	grpcHeader := make([]byte, 7)
-	n, err = io.ReadFull(g.reader, grpcHeader)
+	buf := make([]byte, 5)
+	n, err = io.ReadFull(g.reader, buf)
 	if err != nil {
 		return 0, err
 	}
-	grpcPayloadLen := binary.BigEndian.Uint32(grpcHeader[1:5])
+	//log.Printf("GRPC Header: %x", buf[:n])
+	grpcPayloadLen := binary.BigEndian.Uint32(buf[1:])
+	//log.Printf("GRPC Payload Length: %d", grpcPayloadLen)
 
-	protobufPayloadLen, protobufLengthLen := leb128.DecodeUleb128(grpcHeader[6:])
+	buf = make([]byte, grpcPayloadLen)
+	n, err = io.ReadFull(g.reader, buf)
+	if err != nil {
+		return 0, io.ErrUnexpectedEOF
+	}
+	protobufPayloadLen, protobufLengthLen := leb128.DecodeUleb128(buf[1:])
+	//log.Printf("Protobuf Payload Length: %d, Length Len: %d", protobufPayloadLen, protobufLengthLen)
 	if protobufLengthLen == 0 {
 		return 0, ErrInvalidLength
 	}
@@ -172,9 +197,7 @@ func (g GunConn) Read(b []byte) (n int, err error) {
 		return 0, ErrInvalidLength
 	}
 
-	n, err = io.MultiReader(bytes.NewReader(grpcHeader[6+protobufLengthLen:n]), io.LimitReader(g.reader, int64(int(grpcPayloadLen)+5-n))).Read(b)
-	return n, err
-
+	return bytes.NewReader(buf[1+protobufLengthLen:]).Read(b)
 }
 
 func (g GunConn) Write(b []byte) (n int, err error) {
@@ -186,6 +209,9 @@ func (g GunConn) Write(b []byte) (n int, err error) {
 	grpcPayloadLen := uint32(len(protobufHeader) + len(b))
 	binary.BigEndian.PutUint32(grpcHeader[1:5], grpcPayloadLen)
 	_, err = io.Copy(g.writer, io.MultiReader(bytes.NewReader(grpcHeader), bytes.NewReader(protobufHeader), bytes.NewReader(b)))
+	if f, ok := g.writer.(http.Flusher); ok {
+		f.Flush()
+	}
 	return len(b), err
 }
 
