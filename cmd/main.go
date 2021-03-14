@@ -8,7 +8,6 @@ import (
 	"net"
 
 	"github.com/Qv2ray/gun-lite/pkg/realgun"
-	"golang.org/x/net/context"
 )
 
 var (
@@ -35,7 +34,7 @@ func main() {
 		log.Fatalf("failed to listen tcp %v: %v", *LocalAddr, err)
 	}
 
-	client := realgun.NewGunClientWithContext(context.TODO(), &realgun.Config{
+	client := realgun.NewGunClient(&realgun.Config{
 		RemoteAddr:  *RemoteAddr,
 		ServerName:  *ServerName,
 		ServiceName: *ServiceName,

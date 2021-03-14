@@ -13,7 +13,6 @@ import (
 
 	"ekyu.moe/leb128"
 	"encoding/binary"
-	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
 )
 
@@ -27,7 +26,6 @@ type GunConn struct {
 }
 
 type Client struct {
-	ctx     context.Context
 	client  *http.Client
 	url     *url.URL
 	headers http.Header
@@ -41,7 +39,7 @@ type Config struct {
 	tlsConfig   *tls.Config
 }
 
-func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
+func NewGunClient(config *Config) *Client {
 	var dialFunc func(network, addr string, cfg *tls.Config) (net.Conn, error) = nil
 	if config.Cleartext {
 		dialFunc = func(network, addr string, cfg *tls.Config) (net.Conn, error) {
@@ -88,7 +86,6 @@ func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
 	}
 
 	return &Client{
-		ctx:    ctx,
 		client: client,
 		url: &url.URL{
 			Scheme: "https",
