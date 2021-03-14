@@ -78,8 +78,9 @@ func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
 			Path:        fmt.Sprintf("/%s/Tun", serviceName),
 		},
 		headers: http.Header{
-			"content-type": []string{"application/grpc+proto"},
-			"user-agent":   []string{"grpc-java/1.2.3"},
+			"content-type": []string{"application/grpc"},
+			"user-agent":   []string{"grpc-go/1.36.0"},
+			"te":           []string{"trailers"},
 		},
 	}
 }
@@ -106,14 +107,17 @@ func (cli *Client) DialConn() (net.Conn, error) {
 		ProtoMinor: 0,
 		Header: cli.headers,
 	}
-	response, err := cli.client.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	if response.StatusCode != 200 {
-		return nil, net.ErrClosed
-	}
-	return newGunConn(response.Body, writer, ChainedClosable{reader, writer, response.Body}, nil, nil), nil
+	anotherReader, anotherWriter := io.Pipe()
+	go func() {
+		defer anotherWriter.Close()
+		response, err := cli.client.Do(request)
+		if err != nil {
+			return
+		}
+		_, _ = io.Copy(anotherWriter, response.Body)
+	}()
+
+	return newGunConn(anotherReader, writer, ChainedClosable{reader, writer, anotherReader}, nil, nil), nil
 }
 
 var (
