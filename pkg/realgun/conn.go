@@ -3,40 +3,42 @@ package realgun
 import (
 	"bytes"
 	"crypto/tls"
-	"ekyu.moe/leb128"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
-	"golang.org/x/net/http2"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
+
+	"ekyu.moe/leb128"
+	"encoding/binary"
+	"golang.org/x/net/context"
+	"golang.org/x/net/http2"
 )
 
 type GunConn struct {
 	reader io.Reader
 	writer io.Writer
 	closer io.Closer
-	local net.Addr
+	local  net.Addr
 	remote net.Addr
-	done chan struct{}
+	done   chan struct{}
 }
 
 type Client struct {
-	ctx context.Context
-	client *http.Client
-	url *url.URL
+	ctx     context.Context
+	client  *http.Client
+	url     *url.URL
 	headers http.Header
 }
 
 type Config struct {
-	RemoteAddr string
-	ServerName string
+	RemoteAddr  string
+	ServerName  string
 	ServiceName string
-	Cleartext bool
+	Cleartext   bool
+	tlsConfig   *tls.Config
 }
 
 func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
@@ -64,24 +66,22 @@ func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
 		}
 	}
 
-	var tlsClientConfig *tls.Config = nil
 	if config.ServerName != "" {
-		tlsClientConfig = new(tls.Config)
-		tlsClientConfig.ServerName = config.ServerName
+		config.tlsConfig.ServerName = config.ServerName
 	}
 
 	client := &http.Client{
-		Transport:     &http2.Transport{
-			DialTLS:                    dialFunc,
-			TLSClientConfig:            tlsClientConfig,
-			AllowHTTP: false,
-			DisableCompression:         true,
-			ReadIdleTimeout:            0,
-			PingTimeout:                0,
+		Transport: &http2.Transport{
+			DialTLS:            dialFunc,
+			TLSClientConfig:    config.tlsConfig,
+			AllowHTTP:          false,
+			DisableCompression: true,
+			ReadIdleTimeout:    0,
+			PingTimeout:        0,
 		},
 	}
 
-	var serviceName string = "GunService"
+	var serviceName = "GunService"
 	if config.ServiceName != "" {
 		serviceName = config.ServiceName
 	}
@@ -89,10 +89,10 @@ func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
 	return &Client{
 		ctx:    ctx,
 		client: client,
-		url:    &url.URL{
-			Scheme:      "https",
-			Host:        config.RemoteAddr,
-			Path:        fmt.Sprintf("/%s/Tun", serviceName),
+		url: &url.URL{
+			Scheme: "https",
+			Host:   config.RemoteAddr,
+			Path:   fmt.Sprintf("/%s/Tun", serviceName),
 		},
 		headers: http.Header{
 			"content-type": []string{"application/grpc"},
@@ -112,17 +112,16 @@ func (cc ChainedClosable) Close() error {
 	return nil
 }
 
-
 func (cli *Client) DialConn() (net.Conn, error) {
 	reader, writer := io.Pipe()
 	request := &http.Request{
-		Method:           http.MethodPost,
-		Body: reader,
-		URL:              cli.url,
-		Proto: "HTTP/2",
+		Method:     http.MethodPost,
+		Body:       reader,
+		URL:        cli.url,
+		Proto:      "HTTP/2",
 		ProtoMajor: 2,
 		ProtoMinor: 0,
-		Header: cli.headers,
+		Header:     cli.headers,
 	}
 	anotherReader, anotherWriter := io.Pipe()
 	go func() {
@@ -240,5 +239,3 @@ func (g GunConn) SetReadDeadline(t time.Time) error {
 func (g GunConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
-
-
