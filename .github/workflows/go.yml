@@ -2,9 +2,9 @@ name: Go
 
 on:
   push:
-    branches: [ dev, main ]
+    branches: [ main ]
   pull_request:
-    branches: [ dev, main ]
+    branches: [ main ]
   release:
     types: [prereleased]
 
@@ -40,18 +40,18 @@ jobs:
             curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
             dep ensure
         fi
-    - name: Build dedicated
+    - name: Build
       env:
         GOOS: ${{ matrix.GOOS }}
         GOARCH: ${{ matrix.GOARCH }}
         CGO_ENABLED: 0
-      run: go build -o gun-dedicated-${{ matrix.GOOS }}-${{ matrix.GOARCH }} github.com/Qv2ray/gun-lite/cmd
-    - name: Upload dedicated assets
+      run: go build -o gun-lite-${{ matrix.GOOS }}-${{ matrix.GOARCH }} github.com/Qv2ray/gun-lite/cmd
+    - name: Upload assets
       uses: actions/upload-artifact@v2.2.1
       with:
         name: gun-lite-${{ matrix.GOOS }}-${{ matrix.GOARCH }}
         path: gun-lite-${{ matrix.GOOS }}-${{ matrix.GOARCH }}
-    - name: Upload dedicated release
+    - name: Upload release
       uses: svenstaro/upload-release-action@v1-release
       if: github.event_name == 'release'
       with:
