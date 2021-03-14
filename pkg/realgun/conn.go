@@ -66,7 +66,8 @@ func NewGunClientWithContext(ctx context.Context, config *Config) *Client {
 		}
 	}
 
-	if config.tlsConfig != nil && config.ServerName != "" {
+	if config.tlsConfig == nil && config.ServerName != "" {
+		config.tlsConfig = new(tls.Config)
 		config.tlsConfig.ServerName = config.ServerName
 	}
 
