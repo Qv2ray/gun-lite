@@ -3,19 +3,20 @@ package main
 import (
 	"errors"
 	"flag"
-	"github.com/Qv2ray/gun-lite/pkg/realgun"
-	"golang.org/x/net/context"
 	"io"
 	"log"
 	"net"
+
+	"github.com/Qv2ray/gun-lite/pkg/realgun"
+	"golang.org/x/net/context"
 )
 
 var (
-	RemoteAddr = flag.String("remote", "", "remote gun server address")
-	LocalAddr = flag.String("local", "", "local server endpoint")
-	ServerName = flag.String("sni", "", "(optional) server name indication")
+	RemoteAddr  = flag.String("remote", "", "remote gun server address")
+	LocalAddr   = flag.String("local", "", "local server endpoint")
+	ServerName  = flag.String("sni", "", "(optional) server name indication")
 	ServiceName = flag.String("service", "", "(optional) custom service name")
-	Cleartext = flag.Bool("cleartext", false, "(optional) use unsafe h2c")
+	Cleartext   = flag.Bool("cleartext", false, "(optional) use unsafe h2c")
 )
 
 func init() {
@@ -53,7 +54,6 @@ func main() {
 			if err != nil {
 				log.Printf("dial remote failed: %v", err)
 			}
-
 
 			go func() {
 				defer remoteConn.Close()

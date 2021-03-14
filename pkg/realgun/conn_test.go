@@ -1,9 +1,10 @@
 package realgun
 
 import (
-	"golang.org/x/net/context"
 	"io"
 	"testing"
+
+	"golang.org/x/net/context"
 )
 
 func Test(t *testing.T) {
