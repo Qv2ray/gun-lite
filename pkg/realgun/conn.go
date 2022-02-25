@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"ekyu.moe/leb128"
@@ -22,7 +23,12 @@ type GunConn struct {
 	closer io.Closer
 	local  net.Addr
 	remote net.Addr
-	done   chan struct{}
+	// mu protect done
+	mu   sync.Mutex
+	done chan struct{}
+
+	toRead []byte
+	readAt int
 }
 
 type Client struct {
@@ -67,6 +73,7 @@ func NewGunClient(config *Config) *Client {
 	if config.tlsConfig == nil && config.ServerName != "" {
 		config.tlsConfig = new(tls.Config)
 		config.tlsConfig.ServerName = config.ServerName
+		config.tlsConfig.NextProtos = []string{"h2"}
 	}
 
 	client := &http.Client{
@@ -170,7 +177,15 @@ func (g *GunConn) isClosed() bool {
 	}
 }
 
-func (g GunConn) Read(b []byte) (n int, err error) {
+func (g *GunConn) Read(b []byte) (n int, err error) {
+	if g.toRead != nil {
+		n = copy(b, g.toRead[g.readAt:])
+		g.readAt += n
+		if g.readAt >= len(g.toRead) {
+			g.toRead = nil
+		}
+		return n, nil
+	}
 	buf := make([]byte, 5)
 	n, err = io.ReadFull(g.reader, buf)
 	if err != nil {
@@ -193,11 +208,16 @@ func (g GunConn) Read(b []byte) (n int, err error) {
 	if grpcPayloadLen != uint32(protobufPayloadLen)+uint32(protobufLengthLen)+1 {
 		return 0, ErrInvalidLength
 	}
-
-	return bytes.NewReader(buf[1+protobufLengthLen:]).Read(b)
+	n = copy(b, buf[1+protobufLengthLen:])
+	if n < int(protobufPayloadLen) {
+		g.toRead = buf
+		g.readAt = 1 + int(protobufLengthLen) + n
+		return n, nil
+	}
+	return n, nil
 }
 
-func (g GunConn) Write(b []byte) (n int, err error) {
+func (g *GunConn) Write(b []byte) (n int, err error) {
 	if g.isClosed() {
 		return 0, io.ErrClosedPipe
 	}
@@ -212,28 +232,34 @@ func (g GunConn) Write(b []byte) (n int, err error) {
 	return len(b), err
 }
 
-func (g GunConn) Close() error {
-	defer close(g.done)
-	err := g.closer.Close()
-	return err
+func (g *GunConn) Close() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	select {
+	case <-g.done:
+		return nil
+	default:
+		close(g.done)
+		return g.closer.Close()
+	}
 }
 
-func (g GunConn) LocalAddr() net.Addr {
+func (g *GunConn) LocalAddr() net.Addr {
 	return g.local
 }
 
-func (g GunConn) RemoteAddr() net.Addr {
+func (g *GunConn) RemoteAddr() net.Addr {
 	return g.remote
 }
 
-func (g GunConn) SetDeadline(t time.Time) error {
+func (g *GunConn) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func (g GunConn) SetReadDeadline(t time.Time) error {
+func (g *GunConn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-func (g GunConn) SetWriteDeadline(t time.Time) error {
+func (g *GunConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
